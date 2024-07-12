@@ -1,0 +1,1051 @@
+---
+title: "SUBMISSION FINAL"
+output: html_document
+date: "2023-04-01"
+Student Number: 210345397
+---
+# Installing packages, Creating a working directory and database 
+```{r installing packages}
+
+# Connect to a SQLite database
+library(RSQLite)
+conn <- dbConnect(SQLite(), "airlinemain_r.db")
+
+# Loading Packages package manager to make further package installation much more hassle free 
+install.packages("pacman")
+require(pacman)
+detach("package:pacman", unload=TRUE) # For Base 
+
+# Installing the tidyverse package to extend the capabilities of the base R
+install.packages("tidyverse")
+library(tidyverse)
+
+# Install.packages("DBI")
+library(DBI)
+
+# Install.packages("dplyr")
+library(dplyr)
+
+# Preventing conflicts
+library(conflicted)
+conflict_prefer("filter", "dplyr") #code will make the dplr filter() and lag() functions the default functions used
+conflict_prefer("lag", "dplyr")
+
+```
+```{r adding more things to import}
+library(ggplot2)
+install.packages("gridExtra")
+```
+
+```{r setting working directory}
+setwd("/Users/mint/Downloads/SAVES☞/dataverse_files") 
+
+getwd()
+
+```
+```{r Creation of database & tables}
+conn <- dbConnect(RSQLite::SQLite(), "airlinemain_r.db")
+
+# Loading in data from the csv files into 2 different variables which will be merged using the append function to form the ontime table.
+ontime2003 <- read.csv("2003.csv.bz2", header = TRUE)
+ontime2004 <- read.csv("2004.csv.bz2", header = TRUE)
+ontime2005 <- read.csv("2005.csv.bz2", header = TRUE)
+ontime2006 <- read.csv("2006.csv.bz2", header = TRUE)
+ontime2007 <- read.csv("2007.csv.bz2", header = TRUE)
+
+# Using dbWriteTable to create the ontime table with the help of the append argument to merge the 2 variables created above. We are also writing the table to the airlinemain_r.db database.
+dbWriteTable(conn, "ontime", ontime2003, append = TRUE)
+dbWriteTable(conn, "ontime", ontime2004, append = TRUE)
+dbWriteTable(conn, "ontime", ontime2005, append = TRUE)
+dbWriteTable(conn, "ontime", ontime2006, append = TRUE)
+dbWriteTable(conn, "ontime", ontime2007, append = TRUE)
+
+# Loading in data from the airports, carriers, & planes csv files & writing them to the arilinemain_r.db database.
+airports <- read.csv("airports.csv", header = TRUE)
+carriers <- read.csv("carriers.csv", header = TRUE)
+planes <- read.csv("plane-data.csv", header = TRUE)
+
+# Ensuring that other similiarly named files do not interfere with our clean file
+dbWriteTable(conn, "airports", airports, overwrite = TRUE)
+dbWriteTable(conn, "carriers", carriers, overwrite = TRUE)
+dbWriteTable(conn, "planes", planes, overwrite = TRUE)
+
+dbListTables(conn)
+
+```
+# Q1: When is the best time of day, day of the week, and time of year to fly to minimise delays? 
+
+Step 1: Importing and loading required packages
+Step 2: Creating a database to work in
+Step 3: Data pre-processing; data-cleaning, data-trandformation, data aggregation
+Step 4: Creating tables in our database
+Step 5: Exploratory Data Analysis
+Question 1.1: When is the best time of year to fly 
+Answer 1.1: The best time of the year to fly is September
+Step 6: Analysis of data by days using percentage and comparing this finding to the average minutes of delays for that day 
+Question 1.2: When is the best day of the week to fly 
+Answer 1.2: The best day of the week to fly is Saturday
+Step 7: examining deviation of average airtime and elapse time over days of the week
+Question 1.3: What is the best time of the day to fly?
+Answer 1.3: The best time of the day to fly is from 0400 to 0559
+
+```{r Exploratory Data Analysis}
+# Connect to SQLite database
+conn <- dbConnect(RSQLite::SQLite(), "airlinemain_r.db")
+
+# Execute SQL query and fetch results
+query1_by_year <- dbGetQuery(conn, "
+  SELECT Year,
+         AVG(Cancelled) * 100 AS `% of Cancelled flights`,
+         AVG(Diverted) * 100 AS `% of Diverted flights`,
+         (SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) / CAST(COUNT(*) AS FLOAT)) * 100 AS `% of ArrDelayed flights`,
+         (SUM(CASE WHEN DepDelay > 0 THEN 1 ELSE 0 END) / CAST(COUNT(*) AS FLOAT)) * 100 AS `% of DepDelayed flights`
+  FROM ontime
+  GROUP BY Year
+  ORDER BY Year
+")
+
+# Display results in a table
+query1_by_year %>%
+  rename(`Year` = 1, `% of Cancelled flights` = 2, `% of Diverted flights` = 3, `% of ArrDelayed flights` = 4, `% of DepDelayed flights` = 5)
+```
+```{r Plotting variables by year}
+Year_Names <- c("2003", "2004", "2005", "2006", "2007")
+par(mfrow=c(1,4), mar=c(4,4,2,1), xpd=TRUE)  # Setting the layout and margins of the plot
+
+# Creating a plot for the percentage of cancelled flights in each year from 2003 to 2007
+barplot(query1_by_year[["% of Cancelled flights"]], xlab="Year", ylab="Cancelled flights %", main="Figure 1.1a: Cancelled flights % by Year", col="steelblue", ylim=c(0,3), names.arg=Year_Names)
+
+# Creating a plot for the percentage of diverted flights in each year from 2003 to 2007
+barplot(query1_by_year[["% of Diverted flights"]], xlab="Year", ylab="Diverted flights %", main="Figure 1.1b: Diverted flights % by Year", col="mediumseagreen", ylim=c(0,0.5), names.arg=Year_Names)
+
+# Creating a plot for the percentage of arrival delayed flights in each year from 2003 to 2007
+barplot(query1_by_year[["% of ArrDelayed flights"]], xlab="Year", ylab="ArrDelayed flights %", main="Figure 1.1c: ArrDelayed flights % by Year", col="mediumpurple", ylim=c(0,70), names.arg=Year_Names)
+
+# Creating a plot for the percentage of departure delayed flights in each year from 2003 to 2007
+barplot(query1_by_year[["% of DepDelayed flights"]], xlab="Year", ylab="DepDelayed flights %", main="Figure 1.1d: DepDelayed flights % by Year", col="mediumblue", ylim=c(0,50), names.arg=Year_Names)
+```
+From Figure 1.1, we observed that the percentage of overall cancellation, diversion, arrival delay and departure delay has increased each year. One deviation can be obeserved in 2006 where the percentage of cancelled flights was lower than in 2005
+
+Further analysis is required on the individual variables and years to answer Q1
+## Q1.1 When is the best time of the year to minimize delays
+```{r Analysing data by month in 2006}
+#Export dataframe to a SQlite database
+conn <- dbConnect(RSQLite::SQLite(), dbname = "flight_data.sqlite")
+DBI::dbWriteTable(conn, "ontime2006", ontime2006, append = TRUE)
+
+#Execute a SQL query to calculate average cancellation, diversion, arrival delay, and departure delay percentages by month in 2006
+Query2ByMonth <- dbGetQuery(conn, "SELECT Month, (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT() AS FLOAT))*100), ((CAST(SUM(CASE WHEN DepDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT() AS FLOAT))*100)
+FROM ontime2006
+GROUP BY Month
+ORDER BY Month")
+
+#Rename the columns of the resulting data frame
+names(Query2ByMonth) <- c("Month", "% of Cancelled flights", "% of Diverted flights", "% of ArrDelayed flights", "% of DepDelayed flights")
+
+#View the resulting data frame
+Query2ByMonth
+```
+```{r Plotting 2006 data by months according to}
+    # "Cancelled flights %"
+    # "Diverted flights %"
+    # "ArrDelayed flights %"
+    # "DepDelayed flights %"
+
+month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+#Creating a 1x4 subplot figure
+par(mfrow=c(1,4), mar=c(4,4,2,1), oma=c(0,0,2,0), mgp=c(2,0.7,0))
+
+#Creating a plot for the percentage of cancelled flights in each month in 2006
+barplot(Query2ByMonth[,2], names.arg = month_names, xlab = "Month", ylab = "Cancelled flights %",
+main = "Figure 1.2a: Cancelled flights % by Month", col = "red", ylim = c(0,10), width = 0.6)
+
+#Creating a plot for the percentage of diverted flights in each month in 2006
+barplot(Query2ByMonth[,3], names.arg = month_names, xlab = "Month", ylab = "Diverted flights %",
+main = "Figure 1.2b: Diverted flights % by Month", col = "mediumseagreen", ylim = c(0,1), width = 0.6)
+
+#Creating a plot for the percentage of arrival delay flights in each month in 2006
+barplot(Query2ByMonth[,4], names.arg = month_names, xlab = "Month", ylab = "ArrDelayed flights %",
+main = "Figure 1.2c: Delayed flights % by Month", col = "mediumpurple", ylim = c(0,60), width = 0.6)
+
+#Creating a plot for the percentage of departure delay flights in each month in 2006
+barplot(Query2ByMonth[,5], names.arg = month_names, xlab = "Month", ylab = "DepDelayed flights %",
+main = "Figure 1.2d: DepDelayed flights % by Month", col = "mediumblue", ylim = c(0,60), width = 0.6)
+```
+```{r Analysing data by month in 2007}
+#Export dataframe to a SQlite database
+conn <- dbConnect(RSQLite::SQLite(), dbname = "flight_data.sqlite")
+DBI::dbWriteTable(conn, "ontime2007", ontime2007, append = TRUE)
+#Execute a SQL query to calculate average cancellation, diversion, arrival delay, and departure delay percentages by month in 2007
+Query3ByMonth <- dbGetQuery(conn, "SELECT Month, (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT() AS FLOAT))*100), ((CAST(SUM(CASE WHEN DepDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT() AS FLOAT))*100)
+FROM ontime2007
+GROUP BY Month
+ORDER BY Month")
+
+#Rename the columns of the resulting data frame
+names(Query3ByMonth) <- c("Month", "% of Cancelled flights", "% of Diverted flights", "% of ArrDelayed flights", "% of DepDelayed flights")
+
+#View the resulting data frame
+Query3ByMonth
+```
+```{r Plotting 2007 data by months }
+Month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+par(mfrow=c(1,4), mar=c(4,4,2,1), oma=c(0,0,2,0), mgp=c(2,0.7,0))
+
+# Creating a plot for the percentage of cancelled flights in each month in 2007 
+barplot(Query3ByMonth[,"% of Cancelled flights"], names.arg=Month_names, main="Figure 1.3a: Cancelled flights % by Month",
+        xlab="Month", ylab="Cancelled flights %", col="darkblue", border="white", ylim=c(0,10), cex.main=0.8)
+
+# Creating a plot for the percentage of diverted flights in each month in 2007
+barplot(Query3ByMonth[,"% of Diverted flights"], names.arg=Month_names, main="Figure 1.3b: Diverted flights % by Month",
+        xlab="Month", ylab="Diverted flights %", col="darkgreen", border="white", ylim=c(0,1), cex.main=0.8)
+
+# Creating a plot for the percentage of arrival delay flights in each month in 2007
+barplot(Query3ByMonth[,"% of ArrDelayed flights"], names.arg=Month_names, main="Figure 1.3c: Delayed flights % by Month",
+        xlab="Month", ylab="ArrDelayed flights %", col="darkmagenta", border="white", ylim=c(0,60), cex.main=0.8)
+
+# Creating a plot for the percentage of departure delay flights in each month in 2007
+barplot(Query3ByMonth[,"% of DepDelayed flights"], names.arg=Month_names, main="Figure 1.3d: DepDelayed flights % by Month",
+        xlab="Month", ylab="DepDelayed flights %", col="darkred", border="white", ylim=c(0,60), cex.main=0.8)
+```
+```{r Analysing data of 2003-2007 by month}
+#Execute a SQL query to calculate average cancellation, diversion, arrival delay, and departure delay percentages by month from 2003-2007
+Query4ByMonth <- dbGetQuery(conn, "SELECT Month, (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT() AS FLOAT))*100), ((CAST(SUM(CASE WHEN DepDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT() AS FLOAT))*100)
+FROM ontime
+GROUP BY Month
+ORDER BY Month")
+
+#Rename the columns of the resulting data frame
+names(Query4ByMonth) <- c("Month", "% of Cancelled flights", "% of Diverted flights", "% of ArrDelayed flights", "% of DepDelayed flights")
+
+#View the resulting data frame
+Query4ByMonth
+```
+```{r Plotting 2003-2007 data by month}
+Month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+par(mfrow=c(1,4), mar=c(4,4,2,1), oma=c(0,0,2,0), mgp=c(2,0.7,0))
+
+# Creating a plot for the percentage of cancelled flights in each month in 2003-2007
+barplot(Query4ByMonth[,"% of Cancelled flights"], names.arg=Month_names, main="Figure 1.4a: Cancelled flights % by Month",
+        xlab="Month", ylab="Cancelled flights %", col="darkblue", border="white", ylim=c(0,10), cex.main=0.8)
+
+# Creating a plot for the percentage of diverted flights in each month in 2003-2007
+barplot(Query4ByMonth[,"% of Diverted flights"], names.arg=Month_names, main="Figure 1.4b: Diverted flights % by Month",
+        xlab="Month", ylab="Diverted flights %", col="darkgreen", border="white", ylim=c(0,1), cex.main=0.8)
+
+# Creating a plot for the percentage of arrival delay flights in each month in 2003-2007
+barplot(Query4ByMonth[,"% of ArrDelayed flights"], names.arg=Month_names, main="Figure 1.4c: Delayed flights % by Month",
+        xlab="Month", ylab="ArrDelayed flights %", col="darkmagenta", border="white", ylim=c(0,60), cex.main=0.8)
+
+# Creating a plot for the percentage of departure delay flights in each month in 2003-2007
+barplot(Query4ByMonth[,"% of DepDelayed flights"], names.arg=Month_names, main="Figure 1.4d: DepDelayed flights % by Month",
+        xlab="Month", ylab="DepDelayed flights %", col="darkred", border="white", ylim=c(0,60), cex.main=0.8)
+```
+## A1.1 
+Upon analysis of 2003-2007 data compared to 2007 and 2006, the results below remain true for 2006 and 2007 after data across all 5 years has been used. 
+
+The best time of the year to minimise delays is September: 
+The percentage of cancelled flights is lowest in May
+The percentage of diverted flights is lowest in May
+The percentage of arrival delay flights is lowest in September
+The percentage of departure delay flights is lowest in September
+
+## Q1.2 When is the best day of the week to fly to minimize delays? 
+Analysis will be done based on the percentage of total delayed flights and the average minutes for delays flights accross days of the week.
+
+```{r Plotting graphs for the percentage of delays accross days of the week}
+# Execute the SQL query
+Query6a <- dbGetQuery(conn, "
+  SELECT DayOfWeek,
+         (AVG(Cancelled)*100),
+         (AVG(Diverted)*100),
+         ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100),
+         ((CAST(SUM(CASE WHEN DepDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100)
+  FROM ontime
+  GROUP BY DayOfWeek
+  ORDER BY DayOfWeek
+")
+
+# Rename columns of the resulting data frame
+names(Query6a) <- c("Day of Week",
+                    "% of Cancelled flights",
+                    "% of Diverted flights",
+                    "% of ArrDelayed flights",
+                    "% of DepDelayed flights")
+
+# Define the days of the week
+Day_of_week <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+# Create the plots
+par(mfrow=c(1,2))
+# Percentage of ARRIVAL DELAY flights from 2003-2007
+barplot(Query6a$`% of ArrDelayed flights`, names.arg = Day_of_week, main = "Figure 6.1: Arrival Delayed flights % by Day of Week", xlab = "Day of Week", ylab = "ArrDelayed Flights %", col = "mediumpurple")
+# Percentage of DEPARTURE DELAY flights from 2003-2007
+barplot(Query6a$`% of DepDelayed flights`, names.arg = Day_of_week, main = "Figure 6.2: Departure Delayed flights % by Day of Week", xlab = "Day of Week", ylab = "DepDelayed Flights %", col = "mediumblue")
+```
+```{r Plotting graphs for the ave minutes of delays accross days of the week}
+# Query the database to extract information regarding average arrival delay by day of week from 2003-2007
+Query6b <- dbGetQuery(conn, "
+  SELECT DayOfWeek, AVG(ArrDelay), AVG(DepDelay)
+  FROM ontime
+  WHERE Cancelled = 0 AND Diverted = 0
+  GROUP BY DayOfWeek
+  ORDER BY DayOfWeek
+")
+
+# Rename columns of the resulting data frame
+names(Query6b) <- c("Day of Week", "Avg Arrival Delay (mins)", "Avg Departure Delay (mins)")
+
+# Define the days of the week
+Day_of_week <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+# Create a plot for the average arrival delay by day of week from 2003-2007
+ggplot(Query6b, aes(x = `Day of Week`, y = `Avg Arrival Delay (mins)`)) +
+  geom_bar(stat = "identity", fill = "firebrick", alpha = 1) +
+  labs(x = "Day of Week", y = "Average Arrival Delay in Mins", 
+       title = "Figure 6.3: Average Arrival Delay by Day of Week") +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
+
+# Create a plot for the average departure delay by day of week from 2003-2007
+ggplot(Query6b, aes(x = `Day of Week`, y = `Avg Departure Delay (mins)`)) +
+  geom_bar(stat = "identity", fill = "pink", alpha = 1) +
+  labs(x = "Day of Week", y = "Average Departure Delay in Mins", 
+       title = "Figure 6.4: Average Departure Delay by Day of Week") +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
+```
+```{r examining deviation of average airtime and elapse time over days of the week}
+#Determining the way time has been strucutred/ weeks from 2003-2007
+Query7a <- dbGetQuery(conn, "
+SELECT DayOfWeek, AVG(AirTime), AVG(ActualElapsedTime)
+FROM ontime
+GROUP by DayOfWeek
+ORDER by DayOfWeek")
+
+#Printing out query
+names(Query7a) <- c("Day of Week", "Avg Airtime", "Avg Elaspse Time")
+Query7a
+```
+## Q1.3: What is the best time of the day to fly to minimise delays?
+```{r}
+# Querying the database
+Query7b <- dbSendQuery(conn,
+                    "SELECT (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100),
+                    CASE WHEN CRSDepTime BETWEEN 0000 AND 0159 THEN '0000 to 0159'
+                         WHEN CRSDepTime BETWEEN 0200 AND 0359 THEN '0200 to 0359'
+                         WHEN CRSDepTime BETWEEN 0400 AND 0559 THEN '0400 to 0559'
+                         WHEN CRSDepTime BETWEEN 0600 AND 0759 THEN '0600 to 0759'
+                         WHEN CRSDepTime BETWEEN 0800 AND 0959 THEN '0800 to 0959'
+                         WHEN CRSDepTime BETWEEN 1000 AND 1159 THEN '1000 to 1159'
+                         WHEN CRSDepTime BETWEEN 1200 AND 1359 THEN '1200 to 1359'
+                         WHEN CRSDepTime BETWEEN 1400 AND 1559 THEN '1400 to 1559'
+                         WHEN CRSDepTime BETWEEN 1600 AND 1759 THEN '1600 to 1759'
+                         WHEN CRSDepTime BETWEEN 1800 AND 1959 THEN '1800 to 1959'
+                         WHEN CRSDepTime BETWEEN 2000 AND 2159 THEN '2000 to 2159'
+                         WHEN CRSDepTime BETWEEN 2200 AND 2359 THEN '2200 to 2359'
+                         END AS TimeFrame
+                    FROM ontime
+                    GROUP BY CASE WHEN CRSDepTime BETWEEN 0000 AND 0159 THEN '0000 to 0159'
+                                  WHEN CRSDepTime BETWEEN 0200 AND 0359 THEN '0200 to 0359'
+                                  WHEN CRSDepTime BETWEEN 0400 AND 0559 THEN '0400 to 0559'
+                                  WHEN CRSDepTime BETWEEN 0600 AND 0759 THEN '0600 to 0759'
+                                  WHEN CRSDepTime BETWEEN 0800 AND 0959 THEN '0800 to 0959'
+                                  WHEN CRSDepTime BETWEEN 1000 AND 1159 THEN '1000 to 1159'
+                                  WHEN CRSDepTime BETWEEN 1200 AND 1359 THEN '1200 to 1359'
+                                  WHEN CRSDepTime BETWEEN 1400 AND 1559 THEN '1400 to 1559'
+                                  WHEN CRSDepTime BETWEEN 1600 AND 1759 THEN '1600 to 1759'
+                                  WHEN CRSDepTime BETWEEN 1800 AND 1959 THEN '1800 to 1959'
+                                  WHEN CRSDepTime BETWEEN 2000 AND 2159 THEN '2000 to 2159'
+                                  WHEN CRSDepTime BETWEEN 2200 AND 2359 THEN '2200 to 2359'
+                                  END
+                    ORDER BY TimeFrame")
+Query7b <- dbFetch(Query7b)
+Query7b <- as.data.frame(Query7b)
+Query7b <- Query7b[,c(4,1,2,3)]
+names(Query7b) <- c("Time Interval", "% of Cancelled flights", "% of Diverted flights", "% of Delayed flights")
+Query7b
+
+```
+## A1.3: The best time of the day to fly to minimize delays is from 0400 to 0559	as the delay percentage of the flight is the lowest at 28.87%. 
+
+# ======================================================================
+# Q2 Do older planes suffer more delays? 
+We will be taking the following steps to analyse the plane age data to answer this question: 
+Step 1: Querying the database to eliminate erroneous data
+Step 3: Understanding the data we have under age of older planes
+Step : Making the connection between the age of planes and delays
+Step : Testing the strength in connection between age planes and delays
+```{r Querying the database to identify the latest and earliest year of manufacture}
+# Execute the SQL query and store the result in a data frame
+Q2manufactureyearmax <- dbGetQuery(conn, "SELECT max(year) FROM planes WHERE year < 2100")
+
+# Give a name to the column
+names(Q2manufactureyearmax) <- "max_year"
+
+# Rename the column in the data frame holding the query result
+Q2manufactureyearmax <- dplyr::rename(Q2manufactureyearmax, `Latest Year of Manufacture` = max_year)
+
+# Display the data frame
+print(Q2manufactureyearmax)
+
+# Execute the SQL query and store the result in a data frame
+Q2manufactureyearmin <- dbGetQuery(conn, "SELECT min(year) FROM planes WHERE year > 1900")
+
+# Give a name to the column
+names(Q2manufactureyearmin) <- "min_year"
+
+# Rename the column in the data frame holding the query result
+Q2manufactureyearmin <- dplyr::rename(Q2manufactureyearmin, `Latest Year of Manufacture` = min_year)
+
+# Display the data frame
+print(Q2manufactureyearmin)
+```
+### Observations from finding the latest and the earliest year of manufacture: 
+The latest year of manufacture is 2008 
+The earliest year of manufacture is 1946
+This totals to planes ranging from age 0 (considering we only include data till 2007) to age 61. We will be considering plane data with plane age 61 and above to be erroneous and emitting the data from our future analysis in this question.
+```{r Removing erronous data}
+# Removing erroneous data
+# Any year of manufacture > year of flight = erroneous
+
+# Query the database to find erroneous data
+Q2erroneous <- dbGetQuery(conn, "SELECT ontime.Year, planes.year, (ontime.Year - planes.year) as Age_of_Plane
+                                 FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum
+                                 WHERE (ontime.Year - planes.year) < 0 and (ontime.Year - planes.year) > 61
+                                 ORDER BY (ontime.Year - planes.year)")
+
+# Print the query result
+Q2erroneous
+```
+# Querying the dataset for the distribution of non-erroneous data from 2003-2007
+```{r Extracting non-erroneous data}
+# Define SQL query
+Q2total <- "SELECT ontime.Year, planes.year, (ontime.Year - planes.year)
+              FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum 
+              ORDER BY (ontime.Year - planes.year)"
+
+# Execute query and retrieve results as a data frame
+Q2total <- dbGetQuery(conn, Q2total)
+```
+```{r Querying the non-erroneous database for plane age data}
+Q2total <- dbGetQuery(conn, "SELECT ontime.Year, planes.year, (ontime.Year - planes.year)
+                            FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum 
+                            ORDER BY (ontime.Year - planes.year)")
+
+# Renaming columns of the dataframe holding the query result. 
+names(Q2total) <- c("Year of flight", "Year of Manufacture", "Age of Plane")
+Q2total
+```
+# Gaining visual on the plane age data
+```{r Query for the spread of plane's age}
+# Querying the database to extract information regarding the year of the plane manufacturing, age of the plane and year the plane was flown
+Q2distribution <- dbGetQuery(conn, "SELECT ontime.Year, planes.year, (ontime.Year - planes.year)
+                                    FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum
+                                    WHERE (ontime.Year - planes.year) > -1 AND (ontime.Year - planes.year) < 62
+                                    ORDER BY (ontime.Year - planes.year)")
+
+# Viewing the distribution queried in a table form
+Q2distribution <- as.data.frame(Q2distribution)
+# Renaming columns of the dataframe holding the query result. 
+colnames(Q2distribution) <- c("Year of flight", "Year of Manufacture", "Age of Plane")
+Q2distribution
+
+# Plotting a histogram to observe the distribution of number of flights by the age of plane. 
+ggplot(Q2distribution, aes(x = `Age of Plane`)) + 
+  geom_histogram(bins = 62, colour = "black", fill = "white") + 
+  labs(x = "Age of Plane", y = "Number of Flights in millions") + 
+  ggtitle("Figure 2.1: Distribution of Number of Flights by Age of Plane") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 12))
+```
+### Observations from Figure 2.1:
+The main age group of the planes range from ages 4 to 7 years old. The highest number of flights are flown by planes in this age group.
+The number of flights made by plans under 20 years old is significantly higher than the number of flights made by planes that are more than 20 years old.
+Hence, when doing our analysis it is important to keep in mind not to compare the delay of flights as a net number but to compare it as a ratio of the flights taken by planes in that particular age group.
+Furthermore, due to a larger sample size of planes aged below 20, it may lead to differences in the accuracy of conclusion drawm from planes aged above 20 and below 20 years old.
+
+```{r Plotting a jointplot of plane age against average ArrDelay}
+# Querying the age of the plane against the variables that we are using to identify as delays
+Q2planeageagainstvariables <- dbGetQuery(conn, "SELECT (ontime.Year - planes.year), AVG(ArrDelay), AVG(DepDelay), COUNT(*)
+                                                FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum
+                                                WHERE (ontime.Year - planes.year) > -1 AND (ontime.Year - planes.year) < 62
+                                                GROUP BY (ontime.Year - planes.year)
+                                                ORDER BY (ontime.Year - planes.year) ASC")
+
+# Renaming columns of the dataframe holding the query result.
+colnames(Q2planeageagainstvariables) <- c("Age of Plane", "Average Arrival Delay in mins", "Average Departure Delay in mins", "Number of Flights")
+
+# Plotting a scatterplot of the Ave ArrDelay against Age of Plane
+scatterplot <- ggplot(Q2planeageagainstvariables, aes(x = `Age of Plane`, y = `Average Arrival Delay in mins`)) +
+  geom_point(alpha = 0.4) + 
+  geom_smooth(method = lm, se = FALSE) +
+  labs(x = "Plane Age", y = "Average Arrival Delay in mins") +
+  ggtitle("Figure 2.2.1: Scatterplot on Average Arrival Delay based on Age of Plane") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+scatterplot
+```
+
+```{r Plotting a jointplot of plane age against average DepDelay}
+# Convert data to data frame
+Q2planeageagainstvariables <- as.data.frame(Q2planeageagainstvariables)
+
+# Plotting a jointplot of the Ave DepDelay against Age of Plane
+scatterplot <- ggplot(Q2planeageagainstvariables, aes(x = `Age of Plane`, y = `Average Departure Delay in mins`)) + 
+               geom_point() + 
+               geom_smooth(method = "lm") + 
+               labs(x = "Plane Age", y = "Average Departure Delay in mins", 
+                    title = "Figure 2.2.2: Scatterplot on Average Departure Delay based on Age of Plane") + 
+               theme(plot.title = element_text(hjust = 0.5))
+
+# Display the plot
+scatterplot
+```
+### Observations from the Figure 2.2.1 and Figure 2.2.2: 
+We can observe that there is no obvious pattern in linearity for both arrival and departure delay with respect to the age of the plane. From these charts however, we can deduce that higher number of flights made by planes between ages 0-10 does not imply increase number of delayed flights. Hence, we can analyse based on the fair and large quantity of data we have of planes ages 0-20 for the following analysis. 
+
+## Querying the percentage of planes that are delayed by age
+```{r extracting plane age relative to percentage of ArrDelay flights}
+# Querying from database to extract information regarding the age of the planes relative to the percentage of its Arrival Delayed flights 
+Q2delaycount <- dbGetQuery(conn, 
+'SELECT (ontime.Year - planes.year), 
+AVG(ArrDelay+DepDelay), 
+COUNT(*), 
+SUM(CASE WHEN ArrDelay+DepDelay > 0 THEN 1 ELSE 0 END), 
+((CAST(SUM(CASE WHEN ArrDelay+DepDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100) 
+                           FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum 
+                           WHERE (ontime.Year - planes.year) > -1 AND (ontime.Year - planes.year) < 62 
+                           GROUP BY (ontime.Year - planes.year) 
+                           ORDER BY (ontime.Year - planes.year) ASC')
+
+# Rename columns of the dataframe holding the query result
+colnames(Q2delaycount) <- c("Age of Plane", "Average Arrival Delay in mins", "Total Number of Flights", "Number of Flights Delayed", "Percentage of Delayed Flights")
+
+# Plotting a jointplot of the percentage of the Delayed Flights based on the Age of Plane
+scatterplot <- ggplot(Q2delaycount, aes(x = `Age of Plane`, y = `Percentage of Delayed Flights`)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Figure 2.3.1: Scatterplot on Percentage of Delayed Flights based on Age of Plane",
+       x = "Plane Age", y = "Percentage of Delayed Flights") +
+  theme_bw()
+
+plot(scatterplot)
+```
+### Observations from the joint plot
+The scatter plot shows the percentage of delayed flights based on the age of the plane. The regression of the plot above shows that an increase in the age of the plane is negatively correlated to the increase in the delay time of flights that the planes have departed on. 
+
+As previously observed, the percentage of the delayed flights for planes older than 22 years old might not be as accurate due to the smaller sample size. However, by analysing the total percentages relative to flight delay. We can conclude that there is posititve and direct correlation between flight delay and the age of the plane.
+
+### Further analysis: creating a subset for planes age 0-23 for a representative data set
+```{r Plane age 0-23 and Delay count}
+delaycountrepresentative <- dbGetQuery(conn, 
+'SELECT (ontime.Year - planes.year), 
+AVG(ArrDelay+DepDelay), 
+COUNT(*), 
+SUM(CASE WHEN ArrDelay+DepDelay > 0 THEN 1 ELSE 0 END), 
+((CAST(SUM(CASE WHEN ArrDelay+DepDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100) 
+                           FROM ontime JOIN planes ON ontime.TailNum = planes.tailnum 
+                           WHERE (ontime.Year - planes.year) > -1 AND (ontime.Year - planes.year) < 23
+                           GROUP BY (ontime.Year - planes.year) 
+                           ORDER BY (ontime.Year - planes.year) ASC')
+
+# Rename columns of the dataframe holding the query result
+colnames(delaycountrepresentative) <- c("Age of Plane", "Average Arrival Delay in mins", "Total Number of Flights", "Number of Flights Delayed", "Percentage of Delayed Flights")
+
+# Plotting a jointplot to visualise the representation of the representative dataet
+scatterplot <- ggplot(delaycountrepresentative, aes(x = `Age of Plane`, y = `Percentage of Delayed Flights`)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Figure 2.3.2: Scatterplot on Percentage of Delayed Flights based on Age of Plane (Representative)",
+       x = "Plane Age (Representative)", y = "Percentage of Delayed Flights") +
+  theme_bw()
+
+plot(scatterplot)
+```
+```{r Finding the R square and R value of the regression plot}
+linear_model <- lm(`Percentage of Delayed Flights` ~ `Age of Plane`, data = delaycountrepresentative)
+summary(linear_model)$r.squared
+
+r_value <- sqrt(summary(linear_model)$r.squared)
+r_value
+```
+## A.2: Older planes do suffer more delays
+From Figure 2.3.2, we can conclude that plane age is strongly correlated (R= 0.88) to the percentage of delayed flights. However, we can only confirm this to be true for plane ages below 23 years of age as there is insufficient data for planes aged 23 and above to make any accurate analysis. 
+# ======================================================================
+# Q3.How does the number of people flying between different locations change over time?
+```{r Finding the top 5 most travelled flight path (from one airport to another)}
+Q3airport <- dbGetQuery(conn,
+                 "SELECT ontime.*, 
+                 ontime.Origin || ' to ' || ontime.Dest AS route,
+                 COUNT(*) AS TotalFlights
+                 FROM ontime 
+                 JOIN airports 
+                 ON ontime.dest = airports.iata
+                 WHERE ontime.Cancelled = 0 AND ontime.Diverted = 0
+                 GROUP by ontime.Origin, ontime.Dest
+                 ORDER by COUNT(*) DESC"
+                 )
+# Creating a data frame from Q3airport
+Q3airport_df <- data.frame(Q3airport)
+
+# Renaming columns of Q3airport_df
+colnames(Q3airport_df) <- c("Route", "Net Traffic")
+Q3airport_df
+
+```
+
+```{r Plotting net traffic by year LAX to SAN}
+Q3LAXtoSAN <- dbGetQuery(conn,
+                 "SELECT ontime.Year, ontime.Month,
+                 ontime.Origin || ' to ' || ontime.Dest AS route,
+                 COUNT(*) AS TotalFlights
+                 FROM ontime 
+                 JOIN airports 
+                 ON ontime.dest = airports.iata
+                 WHERE ontime.Cancelled = 0 
+                 AND ontime.Diverted = 0
+                 AND route = 'LAX to SAN'
+                 GROUP BY ontime.Year, ontime.Month, route
+                 ORDER BY ontime.Year "
+                 )
+
+# Creating a data frame from Q3LAXtoSAN
+Q3LAXtoSAN <- data.frame(Q3LAXtoSAN)
+
+# Renaming columns of Q3LAXtoSAN
+colnames(Q3LAXtoSAN) <- c("Year", "Month", "Route", "Net Traffic")
+
+# Importing plotting libraries
+library(ggplot2)
+library(scales)
+library(reshape2)
+
+#PLOTTING NET TRAFFIC BY YEAR
+# use ggplot2to find the route of the plane
+x <- Q3LAXtoSAN$'Year'
+y <- Q3LAXtoSAN$`Net Traffic`
+
+ggplot(Q3LAXtoSAN, aes(x=x, y=y)) +
+geom_line() +
+labs(x="Year", y="Net Traffic", title="Net Traffic for LAX to SAN Route")
+
+#LINEPLOT
+ggplot(Q3LAXtoSAN, aes(x=Month, y=`Net Traffic`, colour=factor(Year))) +
+geom_line() +
+labs(x="Month", y="Net Traffic", title="Net Traffic for LAX to SAN Route") +
+scale_colour_discrete(name="Year")
+```
+```{r SAN to LAX}
+Q3SANtoLAX <- dbGetQuery(conn,
+                 "SELECT ontime.Year, ontime.Month,
+                 ontime.Origin || ' to ' || ontime.Dest AS route,
+                 COUNT(*) AS TotalFlights
+                 FROM ontime 
+                 JOIN airports 
+                 ON ontime.dest = airports.iata
+                 WHERE ontime.Cancelled = 0 
+                 AND ontime.Diverted = 0
+                 AND route = 'SAN to LAX'
+                 GROUP BY ontime.Year, ontime.Month, route
+                 ORDER BY ontime.Year "
+                 )
+
+# Creating a data frame from Q3SANtoLAX
+Q3SANtoLAX <- data.frame(Q3SANtoLAX)
+
+# Renaming columns of Q3SANtoLAX
+colnames(Q3SANtoLAX) <- c("Year", "Month", "Route", "Net Traffic")
+
+# Importing plotting libraries
+library(ggplot2)
+library(scales)
+library(reshape2)
+
+#PLOTTING NET TRAFFIC BY YEAR
+# use ggplot2to find the route of the plane
+x <- Q3SANtoLAX$'Year'
+y <- Q3SANtoLAX$`Net Traffic`
+
+ggplot(Q3SANtoLAX, aes(x=x, y=y)) +
+geom_line() +
+labs(x="Year", y="Net Traffic", title="Net Traffic for SAN to LAX Route")
+
+#LINEPLOT
+ggplot(Q3SANtoLAX, aes(x=Month, y=`Net Traffic`, colour=factor(Year))) +
+geom_line() +
+labs(x="Month", y="Net Traffic", title="Net Traffic for SAN to LAX Route") +
+scale_colour_discrete(name="Year")
+```
+```{r LAX to LAS}
+Q3LAXtoLAS <- dbGetQuery(conn,
+                 "SELECT ontime.Year, ontime.Month,
+                 ontime.Origin || ' to ' || ontime.Dest AS route,
+                 COUNT(*) AS TotalFlights
+                 FROM ontime 
+                 JOIN airports 
+                 ON ontime.dest = airports.iata
+                 WHERE ontime.Cancelled = 0 
+                 AND ontime.Diverted = 0
+                 AND route = 'LAX to LAS'
+                 GROUP BY ontime.Year, ontime.Month, route
+                 ORDER BY ontime.Year "
+                 )
+
+# Creating a data frame from Q3LAXtoLAS
+Q3LAXtoLAS <- data.frame(Q3LAXtoLAS)
+
+# Renaming columns of Q3LAXtoLAS
+colnames(Q3LAXtoLAS) <- c("Year", "Month", "Route", "Net Traffic")
+
+# Importing plotting libraries
+library(ggplot2)
+library(scales)
+library(reshape2)
+
+#PLOTTING NET TRAFFIC BY YEAR
+# use ggplot2to find the route of the plane
+x <- Q3LAXtoLAS$'Year'
+y <- Q3LAXtoLAS$`Net Traffic`
+
+ggplot(Q3LAXtoLAS, aes(x=x, y=y)) +
+geom_line() +
+labs(x="Time", y="Net Traffic", title="Net Traffic for LAX to LAS Route")
+
+#LINEPLOT
+ggplot(Q3LAXtoLAS, aes(x=Month, y=`Net Traffic`, colour=factor(Year))) +
+geom_line() +
+labs(x="Month", y="Net Traffic", title="Net Traffic for LAX to LAS Route") +
+scale_colour_discrete(name="Year")
+```
+```{r LAX to LAS}
+Q3BOStoLGA <- dbGetQuery(conn,
+                 "SELECT ontime.Year, ontime.Month,
+                 ontime.Origin || ' to ' || ontime.Dest AS route,
+                 COUNT(*) AS TotalFlights
+                 FROM ontime 
+                 JOIN airports 
+                 ON ontime.dest = airports.iata
+                 WHERE ontime.Cancelled = 0 
+                 AND ontime.Diverted = 0
+                 AND route = 'BOS to LGA'
+                 GROUP BY ontime.Year, ontime.Month, route
+                 ORDER BY ontime.Year "
+                 )
+
+# Creating a data frame from Q3BOStoLGA
+Q3BOStoLGA <- data.frame(Q3BOStoLGA)
+
+# Renaming columns of Q3BOStoLGA
+colnames(Q3BOStoLGA) <- c("Year", "Month", "Route", "Net Traffic")
+
+# Importing plotting libraries
+library(ggplot2)
+library(scales)
+library(reshape2)
+
+#PLOTTING NET TRAFFIC BY YEAR
+# use ggplot2to find the route of the plane
+x <- Q3BOStoLGA$'Year'
+y <- Q3BOStoLGA$`Net Traffic`
+
+ggplot(Q3BOStoLGA, aes(x=x, y=y)) +
+geom_line() +
+labs(x="Time", y="Net Traffic", title="Net Traffic for BOS to LGA Route")
+
+#LINEPLOT
+ggplot(Q3BOStoLGA, aes(x=Month, y=`Net Traffic`, colour=factor(Year))) +
+geom_line() +
+labs(x="Month", y="Net Traffic", title="Net Traffic for BOS to LGA Route") +
+scale_colour_discrete(name="Year")
+```
+## Querying top 3 routes by month to analyse difference in trends across months
+```{r}
+Q3Top3ByMonth <- dbGetQuery(conn,
+                 "SELECT ontime.Year, ontime.Month,
+                 ontime.Origin || ' to ' || ontime.Dest AS route,
+                 COUNT(*) AS TotalFlights
+                 FROM ontime 
+                 JOIN airports 
+                 ON ontime.dest = airports.iata
+                 WHERE ontime.Cancelled = 0 
+                 AND ontime.Diverted = 0
+                 AND (Route = 'BOS to LGA'
+                 OR Route = 'LAX to LAS'
+                 OR Route = 'LAX to SAN')
+                 GROUP BY ontime.Year, ontime.Month, route
+                 ORDER BY ontime.Year ")
+
+Q3Top3ByMonth <- data.frame(Q3Top3ByMonth)
+colnames(Q3Top3ByMonth) <- c("Year", "Month", "Route", "Net Traffic")
+Q3Top3ByMonth
+```
+```{r Plotting Net traffic for top 3 routes by month}
+# plot the line graph with month on the x-axis and Net Traffic on the y-axis, colored by Route
+ggplot(Q3Top3ByMonth, aes(x = Month, y = `Net Traffic`, color = Route)) +
+  geom_line() +
+  xlab("Month") +
+  ylab("Net Traffic") +
+  ggtitle("Net Traffic for Top 3 Routes against Month") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))  # center the plot title
+
+```
+
+```{r Plotting net traffic for top 3 routes by year}
+# Convert Year column to integer
+Q3Top3ByMonth$Year <- as.integer(Q3Top3ByMonth$Year)
+
+# Line plot
+ggplot(Q3Top3ByMonth, aes(x = Year, y = `Net Traffic`, color = Route)) +
+  geom_line() +
+  labs(x = "Year", y = "Net Traffic", title = "Net Traffic for Top 3 Routes from 2003-2007") +
+  scale_x_continuous(breaks = seq(2003, 2007, 1), labels = as.character(seq(2003, 2007, 1)))
+```
+From the tables above, the trends in the volume of air traffic differs from route to route, however it can be seen that the net traffic of the different routes changes over time. 
+## A.3: We can observe in a change in the number of passengers over time according to their routes
+# ======================================================================
+# Q4. Can you detect cascading failures as delays in one airport create delays in others?
+Query : Arrival delay of planes that have consecutive flights result in departure delay at the following locations
+Query : Does the Departure delay that happen cascade to the next chain of airports? 
+
+```{r Analysing top 5 delays under 100 mins}
+# Query flights that have experienced "LateAircraftDelay < 100mins"
+q4_lateaircraftdelay <- dbGetQuery(conn,
+    "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay, 
+    DepDelay, Origin, Dest, FlightNum, LateAircraftDelay 
+    FROM ontime 
+    WHERE Cancelled = 0 AND Diverted = 0 AND LateAircraftDelay > 0 AND LateAircraftDelay < 100 
+    AND TailNum != 0 
+    ORDER BY LateAircraftDelay DESC"
+)
+
+# Rename columns
+colnames(q4_lateaircraftdelay) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", "ArrDelay", "DepDelay", "Origin", "Dest", "FlightNum", "LateAircraftDelay")
+
+q4_lateaircraftdelay
+```
+Top 5 rows 
+2003	6	8	2127	1940	2225	2040	N341UA
+2003	6	28	2038	1855	2202	2010	N926UA
+2003	6	12	2400	2220	120	2341	N123UW
+2003	6	23	1947	1750	2124	1911	N629AU
+2003	6	13	2336	2000	220	2239	N178UW
+```{r 8/6/2003 N341UA }
+# Query flights with tail number N464UA on 8/6/2003 
+q4_N464UA <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                                DepDelay, Origin, Dest, LateAircraftDelay
+                             FROM ontime
+                             WHERE Year = 2003 AND Month = 6 AND DayofMonth = 8 AND TailNum = 'N341UA'
+                             ORDER BY CRSDepTime")
+
+# Rename columns
+names(q4_N464UA) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", 
+                      "ArrDelay", "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_N464UA
+```
+```{r 8/6/2003 N341UA }
+# Query flights with tail number N464UA on 8/6/2003 
+q4_N464UA <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                                DepDelay, Origin, Dest, LateAircraftDelay
+                             FROM ontime
+                             WHERE Year = 2003 AND Month = 6 AND DayofMonth = 8 AND TailNum = 'N341UA'
+                             ORDER BY CRSDepTime")
+
+# Rename columns
+names(q4_N464UA) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", 
+                      "ArrDelay", "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_N464UA
+```
+```{r N926UA 6/28/2003}
+# Query flights with tail number N926UA on 6/28/2003
+q4_N926UA <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                                DepDelay, Origin, Dest, LateAircraftDelay
+                             FROM ontime
+                             WHERE Year = 2003 AND Month = 6 AND DayofMonth = 28 AND TailNum = 'N926UA'
+                             ORDER BY CRSDepTime")
+
+# Rename columns
+names(q4_N926UA) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", 
+                      "ArrDelay", "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_N926UA
+```
+```{r N123UW 6/12/2003}
+# Query flights with tail number N123UW on 6/12/2003 
+q4_N123UW <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                                DepDelay, Origin, Dest, LateAircraftDelay
+                             FROM ontime
+                             WHERE Year = 2003 AND Month = 6 AND DayofMonth = 12 AND TailNum = 'N123UW'
+                             ORDER BY CRSDepTime")
+
+# Rename columns
+names(q4_N123UW) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", 
+                      "ArrDelay", "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_N123UW
+```
+```{r N629AU 6/23/2003}
+# Query flights with tail number N629AU on 6/23/2003 
+q4_N629AU <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                                DepDelay, Origin, Dest, LateAircraftDelay
+                             FROM ontime
+                             WHERE Year = 2003 AND Month = 6 AND DayofMonth = 23 AND TailNum = 'N629AU'
+                             ORDER BY CRSDepTime")
+
+# Rename columns
+names(q4_N629AU) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", 
+                      "ArrDelay", "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_N629AU
+
+```
+```{r N178UW 6/13/2003}
+# Query flights with tail number N178UW on 6/13/2003 
+q4_N178UW <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                                DepDelay, Origin, Dest, LateAircraftDelay
+                             FROM ontime
+                             WHERE Year = 2003 AND Month = 6 AND DayofMonth = 13 AND TailNum = 'N178UW'
+                             ORDER BY CRSDepTime")
+
+# Rename columns
+names(q4_N178UW) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", 
+                      "ArrDelay", "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_N178UW
+```
+Conclusion: N123UW and N926UA out of 5 of the 99 min flights observed casecading delays. 
+Further analysis is required to understand if cascading failures in one airport lead to another
+
+### Using N926UA as an example flight to analyse further cascading delays
+ORD	STL	
+N926UA 6/28/2003
+```{r N926UA 6/28/2003}
+# Execute the query
+q4_ORD <- dbGetQuery(conn, "
+                         SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                         DepDelay, Origin, Dest, LateAircraftDelay
+                         FROM ontime
+                         WHERE Year = 2003 AND Month = 6 AND DayofMonth = 28 AND Origin = 'ORD' AND LateAircraftDelay < 100 
+                         ORDER BY CRSDepTime
+                       ")
+
+# Rename the columns
+colnames(q4_ORD) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", "ArrDelay", 
+                      "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_ORD
+```
+```{r Analysing Dep and Arr delay of ORD to its following airports 2003}
+# drop any rows that have missing values in either the ArrDelay or DepDelay column
+install.packages("dplyr")
+library(dplyr)
+library(tidyr)
+q4_ORD <- q4_ORD %>% drop_na(ArrDelay, DepDelay)
+
+# select only the ArrDelay and DepDelay columns
+arr_delay <- q4_ORD$ArrDelay
+dep_delay <- q4_ORD$DepDelay
+
+# calculate the correlation
+correlation <- cor(arr_delay, dep_delay)
+
+# print the correlation
+print(correlation)
+```
+
+```{r 03/01/2004}
+# Execute the query
+q4_ORD2004 <- dbGetQuery(conn, "
+                         SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                         DepDelay, Origin, Dest, LateAircraftDelay
+                         FROM ontime
+                         WHERE Year = 2006 AND Month = 1 AND DayofMonth = 13 AND Origin = 'ORD' AND LateAircraftDelay < 100 AND Origin = 'ORD'
+                         ORDER BY CRSDepTime
+                       ")
+
+# Rename the columns
+colnames(q4_ORD2004) <- c("Year", "Month", "DayofMonth", "DepTime", "CRSDepTime", "ArrTime", "CRSArrTime", "TailNum", "ArrDelay", 
+                      "DepDelay", "Origin", "Dest", "LateAircraftDelay")
+q4_ORD2004
+```
+```{r Analysing Dep and Arr delay of ORD to its following airports 2004}
+q4_ORD2004 <- q4_ORD2004 %>% drop_na(ArrDelay, DepDelay)
+
+# select only the ArrDelay and DepDelay columns
+arr_delay <- q4_ORD2004$ArrDelay
+dep_delay <- q4_ORD2004$DepDelay
+
+# calculate the correlation
+correlation <- cor(arr_delay, dep_delay)
+
+# print the correlation
+print(correlation)
+```
+A.4: Cascading failures from one airport to another can be detected via analysis of arrival and departure delays in that airport. In this study, we tracked a late aircraft tailnumber and its late arrival into ORD airport. This late arrival caused a following late departure of other flights in that airport for Corr = 0.83 in 2003 and Corr = 0.84 in 2004. We can conclude that one delay is strongly correlated to further delays in the following airports.
+
+# ======================================================================
+
+# Q5. Use the available variables to construct a model that predicts delays
+```{r}
+install.packages("paradox")
+```
+```{r Importing relevant machine learning packages}
+install.packages("mlr3")
+install.packages("mlr3learners")
+install.packages("mlr3pipelines")
+install.packages("mlr3tuning")
+install.packages("mlr_pipeops")
+
+library(mlr3)
+library(mlr3learners)
+library(mlr3pipelines)
+library(mlr3tuning)
+library(mlr_pipeops)
+```
+```{r importing dataframe from python}
+#Q5n_5000 <-read.csv("Q5n_5000.csv", header=TRUE) 
+```
+```{r Assigning  n sample row value}
+#n <- nrow(q5new) 
+```
+```{r}
+# Import required packages
+library(mlr3)
+library(mlr3learners)
+library(mlr3pipelines)
+library(mlr3tuning)
+library(mlr_pipeops)
+
+# Import dataset
+Q5_DelaybyVariables <- dbGetQuery(conn, 
+"SELECT Year, Month, DayofMonth, DayOfWeek, ArrTime, DepTime, Distance, ActualElapsedTime, AirTime, CarrierDelay, WeatherDelay, NASDelay, SecurityDelay, ArrDelay, DepDelay, LateAircraftDelay
+FROM ontime
+WHERE Cancelled = 0 AND Diverted = 0 AND LateAircraftDelay > 0
+AND TailNum != 0
+ORDER BY LateAircraftDelay DESC")
+
+# Split data into training and test sets
+set.seed(123)
+train_index <- sample(nrow(Q5_DelaybyVariables), 0.7 * nrow(Q5_DelaybyVariables))
+train <- Q5_DelaybyVariables[train_index,]
+test <- Q5_DelaybyVariables[-train_index,]
+
+# Train models
+lmModelad <- lm(ArrDelay ~ ., data=train)
+lmModeldd <- lm(DepDelay ~ ., data=train)
+
+# Predict on test set
+test$PredictedArrDelay <- predict(lmModelad, test)
+test$PredictedDepDelay <- predict(lmModeldd, test)
+
+# Calculate accuracy
+acc_ad <- 1 - mean((test$ArrDelay - test$PredictedArrDelay) ^ 2) / var(test$ArrDelay)
+acc_dd <- 1 - mean((test$DepDelay - test$PredictedDepDelay) ^ 2) / var(test$DepDelay)
+
+# Print results
+cat("Test dataset accuracy is for ArrDelay:", round(acc_ad, 2), "\n")
+cat("Test dataset accuracy is for DepDelay:", round(acc_dd, 2), "\n")
+
+```
+A5: The best model for predicting late aircraft delay is the Linear Regression model, as shown from the results above. The linear regression model has a high level of accuracy and a low value of error
+```{r Disconnect from database}
+
+dbDisconnect(conn)
+
+```
